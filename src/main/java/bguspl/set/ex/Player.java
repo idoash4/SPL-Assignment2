@@ -1,5 +1,10 @@
 package bguspl.set.ex;
 
+import java.util.Queue;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Level;
 
 import bguspl.set.Env;
@@ -16,6 +21,11 @@ public class Player implements Runnable {
      * The game environment object.
      */
     private final Env env;
+
+    /**
+     * Dealer object
+     */
+    private final Dealer dealer;
 
     /**
      * Game entities.
@@ -53,6 +63,21 @@ public class Player implements Runnable {
     private int score;
 
     /**
+     * Incoming Actions queue
+     */
+    private BlockingQueue<Integer> incomingActions;
+
+    /**
+     *
+     */
+    private final Integer[] tokenToSlot;
+
+    /**
+     *
+     */
+    private final Integer[] slotToToken;
+
+    /**
      * The class constructor.
      *
      * @param env    - the environment object.
@@ -63,9 +88,13 @@ public class Player implements Runnable {
      */
     public Player(Env env, Dealer dealer, Table table, int id, boolean human) {
         this.env = env;
+        this.dealer = dealer;
         this.table = table;
         this.id = id;
         this.human = human;
+        this.incomingActions = new ArrayBlockingQueue<>(3);
+        this.tokenToSlot = new Integer[3];
+        this.slotToToken = new Integer[env.config.tableSize];
     }
 
     /**
@@ -74,11 +103,23 @@ public class Player implements Runnable {
     @Override
     public void run() {
         playerThread = Thread.currentThread();
-        env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + "starting.");
+        env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " starting.");
         if (!human) createArtificialIntelligence();
 
         while (!terminate) {
             // TODO implement main player loop
+            try {
+                int slot = incomingActions.take();
+                env.logger.log(Level.INFO, "Processing key for player on slot: " + slot);
+                
+                if (slotToToken[slot] == null) {
+                    placeToken(slot);
+                } else {
+                    removeToken(slot);
+                }
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
         }
         if (!human) try { aiThread.join(); } catch (InterruptedException ignored) {}
         env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " terminated.");
@@ -95,8 +136,10 @@ public class Player implements Runnable {
             while (!terminate) {
                 // TODO implement player key press simulator
                 try {
-                    synchronized (this) { wait(); }
-                } catch (InterruptedException ignored) {}
+                    incomingActions.put(ThreadLocalRandom.current().nextInt(0, 12));
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
             }
             env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " terminated.");
         }, "computer-" + id);
@@ -117,6 +160,25 @@ public class Player implements Runnable {
      */
     public void keyPressed(int slot) {
         // TODO implement
+        if (!incomingActions.offer(slot)) {
+            env.logger.log(Level.WARNING, "Failed to add key press to queue");
+        }
+    }
+
+    private void placeToken(int slot) {
+        for (int i = 0; i < tokenToSlot.length; i++) {
+            if (tokenToSlot[i] == null) {
+                tokenToSlot[i] = slot;
+                slotToToken[slot] = i;
+                table.placeToken(id, slot);
+            }
+        }
+        env.logger.log(Level.WARNING, "A player attempted to place a 4th token");
+    }
+
+    private void removeToken(int slot) {
+        int token = slotToToken[slot];
+
     }
 
     /**
@@ -137,6 +199,7 @@ public class Player implements Runnable {
      */
     public void penalty() {
         // TODO implement
+        incomingActions.clear();
     }
 
     public int getScore() {

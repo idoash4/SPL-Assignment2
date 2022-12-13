@@ -2,7 +2,9 @@ package bguspl.set.ex;
 
 import bguspl.set.Env;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -38,11 +40,16 @@ public class Dealer implements Runnable {
      */
     private long reshuffleTime = Long.MAX_VALUE;
 
+
+    protected ConcurrentLinkedQueue<Integer> setChecks;
+
+
     public Dealer(Env env, Table table, Player[] players) {
         this.env = env;
         this.table = table;
         this.players = players;
         deck = IntStream.range(0, env.config.deckSize).boxed().collect(Collectors.toList());
+        setChecks = new ConcurrentLinkedQueue<>();
     }
 
     /**
@@ -51,6 +58,7 @@ public class Dealer implements Runnable {
     @Override
     public void run() {
         env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " starting.");
+        createAndRunPlayerThreads();
         while (!shouldFinish()) {
             placeCardsOnTable();
             timerLoop();
@@ -59,6 +67,16 @@ public class Dealer implements Runnable {
         }
         announceWinners();
         env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " terminated.");
+    }
+
+    /**
+     *
+     */
+    private void createAndRunPlayerThreads() {
+        for (Player player:players) {
+            Thread playerThread = new Thread(player, "player "+player.id);
+            playerThread.start();
+        }
     }
 
     /**
@@ -94,6 +112,8 @@ public class Dealer implements Runnable {
      */
     private void removeCardsFromTable() {
         // TODO implement
+
+        //boardCheck.release();
     }
 
     /**
@@ -101,6 +121,21 @@ public class Dealer implements Runnable {
      */
     private void placeCardsOnTable() {
         // TODO implement
+        Collections.shuffle(deck);
+        int empty_slots = table.countEmptySlots();
+        env.logger.log(Level.INFO, "Placing cards on board, empty slots: " +empty_slots);
+        for (int i = 0; i < empty_slots && deck.size() >= 1; i++) {
+            // Attempt to place the card from the top of the deck on the board
+            if (table.placeCard(deck.get(0)) != -1) {
+                // If the card was placed on the board remove it from the deck
+                deck.remove(0);
+            } else {
+                env.logger.log(Level.WARNING, "Dealer attempted to place a card on a full board");
+            }
+        }
+        if (empty_slots > 0) {
+            updateTimerDisplay(true);
+        }
     }
 
     /**
@@ -108,13 +143,24 @@ public class Dealer implements Runnable {
      */
     private void sleepUntilWokenOrTimeout() {
         // TODO implement
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     /**
      * Reset and/or update the countdown and the countdown display.
      */
     private void updateTimerDisplay(boolean reset) {
-        // TODO implement
+        if (reset) {
+            reshuffleTime = System.currentTimeMillis() + env.config.turnTimeoutMillis;
+        }
+        if (env.config.turnTimeoutMillis > 0) {
+            long time_remaining = reshuffleTime - System.currentTimeMillis();
+            env.ui.setCountdown(time_remaining > 0 ? time_remaining : 0, time_remaining < env.config.turnTimeoutWarningMillis);
+        }
     }
 
     /**
@@ -122,6 +168,7 @@ public class Dealer implements Runnable {
      */
     private void removeAllCardsFromTable() {
         // TODO implement
+        deck.addAll(table.removeAllCards());
     }
 
     /**
