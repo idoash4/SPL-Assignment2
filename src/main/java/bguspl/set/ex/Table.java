@@ -53,7 +53,7 @@ public class Table {
     /**
      * This method prints all possible legal sets of cards that are currently on the table.
      */
-    public void hints() {
+    public synchronized void hints() {
         List<Integer> deck = Arrays.stream(slotToCard).filter(Objects::nonNull).collect(Collectors.toList());
         env.util.findSets(deck, Integer.MAX_VALUE).forEach(set -> {
             StringBuilder sb = new StringBuilder().append("Hint: Set found: ");

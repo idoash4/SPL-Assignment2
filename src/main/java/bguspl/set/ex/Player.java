@@ -1,8 +1,6 @@
 package bguspl.set.ex;
 
-import java.util.Queue;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Level;
@@ -77,6 +75,10 @@ public class Player implements Runnable {
      */
     private final Integer[] slotToToken;
 
+    private int tokenCounter;
+
+    private long freezeTime = Long.MIN_VALUE;
+
     /**
      * The class constructor.
      *
@@ -95,6 +97,7 @@ public class Player implements Runnable {
         this.incomingActions = new ArrayBlockingQueue<>(3);
         this.tokenToSlot = new Integer[3];
         this.slotToToken = new Integer[env.config.tableSize];
+        tokenCounter = 0;
     }
 
     /**
@@ -107,15 +110,18 @@ public class Player implements Runnable {
         if (!human) createArtificialIntelligence();
 
         while (!terminate) {
-            // TODO implement main player loop
             try {
-                int slot = incomingActions.take();
-                env.logger.log(Level.INFO, "Processing key for player on slot: " + slot);
-                
-                if (slotToToken[slot] == null) {
-                    placeToken(slot);
+                if (!isFrozen()) {
+                    env.ui.setFreeze(id, 0);
+                    int slot = incomingActions.take();
+                    if (!dealer.isReshuffling()) {
+                        env.logger.log(Level.INFO, "Processing key for player on slot: " + slot);
+                        handleKey(slot);
+                    }
                 } else {
-                    removeToken(slot);
+                    env.ui.setFreeze(id, freezeTime - System.currentTimeMillis());
+                    Thread.sleep(100);
+                    incomingActions.clear();
                 }
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
@@ -123,6 +129,33 @@ public class Player implements Runnable {
         }
         if (!human) try { aiThread.join(); } catch (InterruptedException ignored) {}
         env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " terminated.");
+    }
+
+    private synchronized void handleKey(int slot) {
+        if (slotToToken[slot] == null) {
+            placeToken(slot);
+        } else {
+            removeToken(slot);
+        }
+        if (tokenCounter == tokenToSlot.length) {
+            requestSetCheck();
+        }
+    }
+
+    private synchronized void requestSetCheck() {
+        try {
+            dealer.setChecks.put(id);
+            while(tokenCounter == 3 || !isFrozen()) {
+                dealer.dealerThread.interrupt();
+                wait();
+            }
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        finally {
+            incomingActions.clear();
+        }
+
     }
 
     /**
@@ -165,20 +198,29 @@ public class Player implements Runnable {
         }
     }
 
-    private void placeToken(int slot) {
+    private synchronized void placeToken(int slot) {
         for (int i = 0; i < tokenToSlot.length; i++) {
             if (tokenToSlot[i] == null) {
                 tokenToSlot[i] = slot;
                 slotToToken[slot] = i;
                 table.placeToken(id, slot);
+                tokenCounter++;
+                break;
             }
         }
         env.logger.log(Level.WARNING, "A player attempted to place a 4th token");
     }
 
-    private void removeToken(int slot) {
+    private synchronized void removeToken(int slot) {
         int token = slotToToken[slot];
+        slotToToken[slot] = null;
+        tokenToSlot[token] = null;
+        table.removeToken(id, slot);
+        tokenCounter--;
+    }
 
+    public synchronized Integer[] getSlotsWithTokens() {
+        return tokenToSlot;
     }
 
     /**
@@ -192,14 +234,22 @@ public class Player implements Runnable {
 
         int ignored = table.countCards(); // this part is just for demonstration in the unit tests
         env.ui.setScore(id, ++score);
+        setFreezeTime(System.currentTimeMillis() + env.config.pointFreezeMillis);
     }
 
     /**
      * Penalize a player and perform other related actions.
      */
-    public void penalty() {
-        // TODO implement
-        incomingActions.clear();
+    public synchronized void penalty() {
+        setFreezeTime(System.currentTimeMillis() + env.config.penaltyFreezeMillis);
+    }
+
+    private void setFreezeTime(long time) {
+        freezeTime = time;
+    }
+
+    private boolean isFrozen() {
+        return freezeTime > System.currentTimeMillis();
     }
 
     public int getScore() {

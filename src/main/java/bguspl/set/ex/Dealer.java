@@ -4,7 +4,8 @@ import bguspl.set.Env;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -40,8 +41,11 @@ public class Dealer implements Runnable {
      */
     private long reshuffleTime = Long.MAX_VALUE;
 
+    protected Thread dealerThread;
 
-    protected ConcurrentLinkedQueue<Integer> setChecks;
+    protected final BlockingQueue<Integer> setChecks;
+
+    private volatile boolean reshuffleState;
 
 
     public Dealer(Env env, Table table, Player[] players) {
@@ -49,7 +53,7 @@ public class Dealer implements Runnable {
         this.table = table;
         this.players = players;
         deck = IntStream.range(0, env.config.deckSize).boxed().collect(Collectors.toList());
-        setChecks = new ConcurrentLinkedQueue<>();
+        setChecks = new ArrayBlockingQueue<>(1, true);
     }
 
     /**
@@ -57,11 +61,15 @@ public class Dealer implements Runnable {
      */
     @Override
     public void run() {
+        dealerThread = Thread.currentThread();
         env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " starting.");
+        reshuffleState = true;
         createAndRunPlayerThreads();
         while (!shouldFinish()) {
             placeCardsOnTable();
+            reshuffleState = false;
             timerLoop();
+            reshuffleState = true;
             updateTimerDisplay(false);
             removeAllCardsFromTable();
         }
@@ -112,8 +120,35 @@ public class Dealer implements Runnable {
      */
     private void removeCardsFromTable() {
         // TODO implement
-
-        //boardCheck.release();
+        Integer playerId = setChecks.poll();
+        if (playerId != null) {
+            env.logger.log(Level.INFO, "Waiting for player " + playerId + " lock to check for set");
+            synchronized (players[playerId]) {
+                env.logger.log(Level.INFO, "Checking player " + playerId + " set");
+                Integer[] slots = players[playerId].getSlotsWithTokens();
+                int[] cards = new int[3];
+                for (int i = 0; i < slots.length; i++) {
+                    if (slots[i] != null) {
+                        cards[i] = table.slotToCard[slots[i]];
+                    } else {
+                        players[playerId].notifyAll();
+                        env.logger.log(Level.INFO, "Set of player " + playerId + " has less than 3 cards");
+                        return;
+                    }
+                }
+                if (env.util.testSet(cards)) {
+                    env.logger.log(Level.INFO, "Set of player " + playerId + " is valid");
+                    for (int slot:slots) {
+                        table.removeCard(slot);
+                    }
+                    players[playerId].point();
+                } else {
+                    env.logger.log(Level.INFO, "Set of player " + playerId + " is invalid");
+                    players[playerId].penalty();
+                }
+                players[playerId].notifyAll();
+            }
+        }
     }
 
     /**
@@ -121,20 +156,20 @@ public class Dealer implements Runnable {
      */
     private void placeCardsOnTable() {
         // TODO implement
-        Collections.shuffle(deck);
         int empty_slots = table.countEmptySlots();
-        env.logger.log(Level.INFO, "Placing cards on board, empty slots: " +empty_slots);
-        for (int i = 0; i < empty_slots && deck.size() >= 1; i++) {
-            // Attempt to place the card from the top of the deck on the board
-            if (table.placeCard(deck.get(0)) != -1) {
-                // If the card was placed on the board remove it from the deck
-                deck.remove(0);
-            } else {
-                env.logger.log(Level.WARNING, "Dealer attempted to place a card on a full board");
-            }
-        }
         if (empty_slots > 0) {
+            Collections.shuffle(deck);
+            for (int i = 0; i < empty_slots && deck.size() >= 1; i++) {
+                // Attempt to place the card from the top of the deck on the board
+                if (table.placeCard(deck.get(0)) != -1) {
+                    // If the card was placed on the board remove it from the deck
+                    deck.remove(0);
+                } else {
+                    env.logger.log(Level.WARNING, "Dealer attempted to place a card on a full board");
+                }
+            }
             updateTimerDisplay(true);
+            table.hints();
         }
     }
 
@@ -146,7 +181,7 @@ public class Dealer implements Runnable {
         try {
             Thread.sleep(100);
         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+            env.logger.log(Level.INFO, "Dealer thread was interrupted");
         }
     }
 
@@ -161,6 +196,10 @@ public class Dealer implements Runnable {
             long time_remaining = reshuffleTime - System.currentTimeMillis();
             env.ui.setCountdown(time_remaining > 0 ? time_remaining : 0, time_remaining < env.config.turnTimeoutWarningMillis);
         }
+    }
+
+    public boolean isReshuffling() {
+        return reshuffleState;
     }
 
     /**
