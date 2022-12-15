@@ -3,6 +3,7 @@ package bguspl.set.ex;
 import bguspl.set.Env;
 
 import java.util.*;
+import java.util.logging.Level;
 import java.util.stream.Collectors;
 
 /**
@@ -27,6 +28,10 @@ public class Table {
      */
     protected final Integer[] cardToSlot; // slot per card (if any)
 
+    protected final boolean[][] slotToPlayerToken;
+
+    protected final int[] tokenPlayerCounter;
+
     /**
      * Constructor for testing.
      *
@@ -34,10 +39,12 @@ public class Table {
      * @param slotToCard - mapping between a slot and the card placed in it (null if none).
      * @param cardToSlot - mapping between a card and the slot it is in (null if none).
      */
-    public Table(Env env, Integer[] slotToCard, Integer[] cardToSlot) {
+    public Table(Env env, Integer[] slotToCard, Integer[] cardToSlot, boolean[][] slotToPlayerToken, int[] tokenPlayerCounter) {
         this.env = env;
         this.slotToCard = slotToCard;
         this.cardToSlot = cardToSlot;
+        this.slotToPlayerToken = slotToPlayerToken;
+        this.tokenPlayerCounter = tokenPlayerCounter;
     }
 
     /**
@@ -46,8 +53,10 @@ public class Table {
      * @param env - the game environment objects.
      */
     public Table(Env env) {
-
-        this(env, new Integer[env.config.tableSize], new Integer[env.config.deckSize]);
+        this(env, new Integer[env.config.tableSize],
+                new Integer[env.config.deckSize],
+                new boolean[env.config.tableSize][env.config.players],
+                new int[env.config.players]);
     }
 
     /**
@@ -88,16 +97,16 @@ public class Table {
      *
      * @post - the card placed is on the table, in the assigned slot.
      */
-    public synchronized void placeCard(int card, int slot) {
+    public void placeCard(int card, int slot) {
         try {
             Thread.sleep(env.config.tableDelayMillis);
         } catch (InterruptedException ignored) {}
 
-        cardToSlot[card] = slot;
-        slotToCard[slot] = card;
-
-        // TODO implement
-        env.ui.placeCard(card, slot);
+        synchronized(this) {
+            cardToSlot[card] = slot;
+            slotToCard[slot] = card;
+            env.ui.placeCard(card, slot);
+        }
     }
 
     // Place a card in the next empty slot and return the slot number
@@ -108,7 +117,6 @@ public class Table {
                 return i;
             }
         }
-        //throw an exception that the board is full?
         return -1;
     }
 
@@ -116,16 +124,24 @@ public class Table {
      * Removes a card from a grid slot on the table.
      * @param slot - the slot from which to remove the card.
      */
-    public synchronized void removeCard(int slot) {
+    public void removeCard(int slot) {
         try {
             Thread.sleep(env.config.tableDelayMillis);
         } catch (InterruptedException ignored) {}
 
-        // TODO implement
-        int card = slotToCard[slot];
-        slotToCard[slot] = null;
-        cardToSlot[card] = null;
-        env.ui.removeCard(slot);
+        synchronized (this) {
+            int card = slotToCard[slot];
+            slotToCard[slot] = null;
+            cardToSlot[card] = null;
+            removeTokens(slot);
+            env.ui.removeCard(slot);
+        }
+    }
+
+    public synchronized void removeCard(int[] cards) {
+        for (int card : cards) {
+            removeCard(cardToSlot[card]);
+        }
     }
 
     // Remove all the cards from the board and return them.
@@ -139,13 +155,29 @@ public class Table {
         return cards;
     }
 
+    public synchronized int updatePlayerToken(int player, int slot) {
+        if (!slotToPlayerToken[slot][player]) {
+            placeToken(player, slot);
+
+        } else {
+            removeToken(player, slot);
+        }
+        return tokenPlayerCounter[player];
+    }
+
     /**
      * Places a player token on a grid slot.
      * @param player - the player the token belongs to.
      * @param slot   - the slot on which to place the token.
      */
-    public synchronized void placeToken(int player, int slot) {
+    public synchronized boolean placeToken(int player, int slot) {
+        if (slotToPlayerToken[slot][player]) {
+            return false;
+        }
+        slotToPlayerToken[slot][player] = true;
+        tokenPlayerCounter[player]++;
         env.ui.placeToken(player, slot);
+        return true;
     }
 
     /**
@@ -155,7 +187,31 @@ public class Table {
      * @return       - true iff a token was successfully removed.
      */
     public synchronized boolean removeToken(int player, int slot) {
+        if (!slotToPlayerToken[slot][player]) {
+            return false;
+        }
+        slotToPlayerToken[slot][player] = false;
+        tokenPlayerCounter[player]--;
         env.ui.removeToken(player, slot);
-        return false; //?
+        return true;
+    }
+
+    public synchronized void removeTokens(int slot) {
+        for (int i = 0; i < slotToPlayerToken[slot].length; i++) {
+            removeToken(i, slot);
+        }
+    }
+
+    public synchronized int[] getCardsWithTokens(int player) {
+        int[] cards = new int[3];
+        int index = 0;
+        for (int i = 0; i < slotToPlayerToken.length && index < 3; i++) {
+            if (slotToPlayerToken[i][player]) {
+                env.logger.log(Level.INFO, "slot: " + i + " card: " + slotToCard[i]);
+                cards[index] = slotToCard[i];
+                index++;
+            }
+        }
+        return cards;
     }
 }

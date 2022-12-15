@@ -63,19 +63,7 @@ public class Player implements Runnable {
     /**
      * Incoming Actions queue
      */
-    private BlockingQueue<Integer> incomingActions;
-
-    /**
-     *
-     */
-    private final Integer[] tokenToSlot;
-
-    /**
-     *
-     */
-    private final Integer[] slotToToken;
-
-    private int tokenCounter;
+    private final BlockingQueue<Integer> incomingActions;
 
     private long freezeTime = Long.MIN_VALUE;
 
@@ -95,9 +83,6 @@ public class Player implements Runnable {
         this.id = id;
         this.human = human;
         this.incomingActions = new ArrayBlockingQueue<>(3);
-        this.tokenToSlot = new Integer[3];
-        this.slotToToken = new Integer[env.config.tableSize];
-        tokenCounter = 0;
     }
 
     /**
@@ -116,7 +101,13 @@ public class Player implements Runnable {
                     int slot = incomingActions.take();
                     if (!dealer.isReshuffling()) {
                         env.logger.log(Level.INFO, "Processing key for player on slot: " + slot);
-                        handleKey(slot);
+                        synchronized (table) {
+                            if (table.updatePlayerToken(id, slot) == 3) {
+                                requestSetCheck();
+                            }
+                        }
+                    } else {
+                        env.logger.log(Level.WARNING, "Players " + id + " pressed a key while dealer is reshuffling");
                     }
                 } else {
                     env.ui.setFreeze(id, freezeTime - System.currentTimeMillis());
@@ -129,33 +120,6 @@ public class Player implements Runnable {
         }
         if (!human) try { aiThread.join(); } catch (InterruptedException ignored) {}
         env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " terminated.");
-    }
-
-    private synchronized void handleKey(int slot) {
-        if (slotToToken[slot] == null) {
-            placeToken(slot);
-        } else {
-            removeToken(slot);
-        }
-        if (tokenCounter == tokenToSlot.length) {
-            requestSetCheck();
-        }
-    }
-
-    private synchronized void requestSetCheck() {
-        try {
-            dealer.setChecks.put(id);
-            while(tokenCounter == 3 || !isFrozen()) {
-                dealer.dealerThread.interrupt();
-                wait();
-            }
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-        finally {
-            incomingActions.clear();
-        }
-
     }
 
     /**
@@ -198,29 +162,16 @@ public class Player implements Runnable {
         }
     }
 
-    private synchronized void placeToken(int slot) {
-        for (int i = 0; i < tokenToSlot.length; i++) {
-            if (tokenToSlot[i] == null) {
-                tokenToSlot[i] = slot;
-                slotToToken[slot] = i;
-                table.placeToken(id, slot);
-                tokenCounter++;
-                break;
+    public void requestSetCheck() {
+        try {
+            dealer.setChecks.put(id);
+            dealer.dealerThread.interrupt();
+            while(dealer.setChecks.contains(id)) {
+                table.wait();
             }
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
-        env.logger.log(Level.WARNING, "A player attempted to place a 4th token");
-    }
-
-    private synchronized void removeToken(int slot) {
-        int token = slotToToken[slot];
-        slotToToken[slot] = null;
-        tokenToSlot[token] = null;
-        table.removeToken(id, slot);
-        tokenCounter--;
-    }
-
-    public synchronized Integer[] getSlotsWithTokens() {
-        return tokenToSlot;
     }
 
     /**
@@ -240,7 +191,7 @@ public class Player implements Runnable {
     /**
      * Penalize a player and perform other related actions.
      */
-    public synchronized void penalty() {
+    public void penalty() {
         setFreezeTime(System.currentTimeMillis() + env.config.penaltyFreezeMillis);
     }
 
@@ -248,7 +199,7 @@ public class Player implements Runnable {
         freezeTime = time;
     }
 
-    private boolean isFrozen() {
+    public boolean isFrozen() {
         return freezeTime > System.currentTimeMillis();
     }
 

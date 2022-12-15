@@ -36,7 +36,7 @@ class TableTest {
         cardToSlot = new Integer[config.deckSize];
 
         Env env = new Env(logger, config, new MockUserInterface(), new MockUtil());
-        table = new Table(env, slotToCard, cardToSlot);
+        //table = new Table(env, slotToCard, cardToSlot);
     }
 
     private int fillSomeSlots() {

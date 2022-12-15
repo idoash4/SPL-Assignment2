@@ -122,31 +122,22 @@ public class Dealer implements Runnable {
         // TODO implement
         Integer playerId = setChecks.poll();
         if (playerId != null) {
-            env.logger.log(Level.INFO, "Waiting for player " + playerId + " lock to check for set");
-            synchronized (players[playerId]) {
+            env.logger.log(Level.INFO, "Waiting for table lock to check for set of player " +playerId);
+            synchronized (table) {
                 env.logger.log(Level.INFO, "Checking player " + playerId + " set");
-                Integer[] slots = players[playerId].getSlotsWithTokens();
-                int[] cards = new int[3];
-                for (int i = 0; i < slots.length; i++) {
-                    if (slots[i] != null) {
-                        cards[i] = table.slotToCard[slots[i]];
-                    } else {
-                        players[playerId].notifyAll();
-                        env.logger.log(Level.INFO, "Set of player " + playerId + " has less than 3 cards");
-                        return;
-                    }
-                }
+                int[] cards = table.getCardsWithTokens(playerId);
+                env.logger.log(Level.INFO, "card " + cards[0]);
+                env.logger.log(Level.INFO, "card " + cards[1]);
+                env.logger.log(Level.INFO, "card " + cards[2]);
                 if (env.util.testSet(cards)) {
                     env.logger.log(Level.INFO, "Set of player " + playerId + " is valid");
-                    for (int slot:slots) {
-                        table.removeCard(slot);
-                    }
+                    table.removeCard(cards);
                     players[playerId].point();
                 } else {
                     env.logger.log(Level.INFO, "Set of player " + playerId + " is invalid");
                     players[playerId].penalty();
                 }
-                players[playerId].notifyAll();
+                table.notifyAll();
             }
         }
     }
