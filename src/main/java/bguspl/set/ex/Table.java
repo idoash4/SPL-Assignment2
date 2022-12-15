@@ -5,6 +5,7 @@ import bguspl.set.Env;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * This class contains the data that is visible to the player.
@@ -31,6 +32,8 @@ public class Table {
     protected final boolean[][] slotToPlayerToken;
 
     protected final int[] tokenPlayerCounter;
+
+    protected final int MAX_PLAYER_TOKENS = 3;
 
     /**
      * Constructor for testing.
@@ -109,15 +112,22 @@ public class Table {
         }
     }
 
-    // Place a card in the next empty slot and return the slot number
+    // Place a card in a random empty slot and return the slot number
     public synchronized int placeCard(int card) {
+        List<Integer> emptySlots = new ArrayList<Integer>(slotToCard.length);
         for (int i = 0; i < slotToCard.length; i++) {
             if (slotToCard[i] == null) {
-                placeCard(card, i);
-                return i;
+                emptySlots.add(i);
             }
         }
-        return -1;
+        if (emptySlots.isEmpty()) {
+            // There are no empty slots
+            return -1;
+        }
+        Random random = new Random();
+        int slot = emptySlots.get(random.nextInt(emptySlots.size()));
+        placeCard(card, slot);
+        return slot;
     }
 
     /**
@@ -138,30 +148,33 @@ public class Table {
         }
     }
 
-    public synchronized void removeCard(int[] cards) {
-        for (int card : cards) {
-            removeCard(cardToSlot[card]);
-        }
+    public void removeCardById(int card) {
+        removeCard(cardToSlot[card]);
     }
 
     // Remove all the cards from the board and return them.
-    public synchronized List<Integer> removeAllCards() {
-        List<Integer> cards = Arrays.stream(slotToCard).filter(Objects::nonNull).collect(Collectors.toList());
-        for (int i = 0; i < slotToCard.length; i++) {
-            if (slotToCard[i] != null) {
-                removeCard(i);
+    public synchronized void removeAllCards() {
+        List<Integer> randomOrderSlots = IntStream.range(0,slotToCard.length).boxed().collect(Collectors.toList());
+        Collections.shuffle(randomOrderSlots);
+        for (int slot : randomOrderSlots) {
+            if (slotToCard[slot] != null) {
+                removeCard(slot);
             }
         }
-        return cards;
     }
 
-    public synchronized int updatePlayerToken(int player, int slot) {
-        if (!slotToPlayerToken[slot][player]) {
-            placeToken(player, slot);
-
-        } else {
-            removeToken(player, slot);
+    public synchronized boolean updatePlayerToken(int player, int slot) {
+        if (slotToCard[slot] == null) {
+            return false; // Slot is empty
         }
+        if (!slotToPlayerToken[slot][player]) {
+            return placeToken(player, slot);
+        } else {
+            return removeToken(player, slot);
+        }
+    }
+
+    public synchronized int getTokenCounter(int player) {
         return tokenPlayerCounter[player];
     }
 
@@ -169,9 +182,10 @@ public class Table {
      * Places a player token on a grid slot.
      * @param player - the player the token belongs to.
      * @param slot   - the slot on which to place the token.
+     * @return       - true if a token was successfully placed.
      */
     public synchronized boolean placeToken(int player, int slot) {
-        if (slotToPlayerToken[slot][player]) {
+        if (slotToPlayerToken[slot][player] || tokenPlayerCounter[player] == MAX_PLAYER_TOKENS) {
             return false;
         }
         slotToPlayerToken[slot][player] = true;
@@ -184,7 +198,7 @@ public class Table {
      * Removes a token of a player from a grid slot.
      * @param player - the player the token belongs to.
      * @param slot   - the slot from which to remove the token.
-     * @return       - true iff a token was successfully removed.
+     * @return       - true if a token was successfully removed.
      */
     public synchronized boolean removeToken(int player, int slot) {
         if (!slotToPlayerToken[slot][player]) {
@@ -202,14 +216,12 @@ public class Table {
         }
     }
 
-    public synchronized int[] getCardsWithTokens(int player) {
-        int[] cards = new int[3];
-        int index = 0;
-        for (int i = 0; i < slotToPlayerToken.length && index < 3; i++) {
+    public synchronized List<Integer> getCardsWithTokens(int player) {
+        List<Integer> cards = new ArrayList<Integer>(MAX_PLAYER_TOKENS);
+        for (int i = 0; i < slotToPlayerToken.length; i++) {
             if (slotToPlayerToken[i][player]) {
                 env.logger.log(Level.INFO, "slot: " + i + " card: " + slotToCard[i]);
-                cards[index] = slotToCard[i];
-                index++;
+                cards.add(slotToCard[i]);
             }
         }
         return cards;

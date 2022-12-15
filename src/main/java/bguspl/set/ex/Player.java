@@ -38,7 +38,7 @@ public class Player implements Runnable {
     /**
      * The thread representing the current player.
      */
-    private Thread playerThread;
+    protected Thread playerThread;
 
     /**
      * The thread of the AI (computer) player (an additional thread used to generate key presses).
@@ -65,6 +65,10 @@ public class Player implements Runnable {
      */
     private final BlockingQueue<Integer> incomingActions;
 
+    private static final int MAX_WAITING_ACTIONS = 3;
+
+    private static final int SLEEP_TIME_MS = 100;
+
     private long freezeTime = Long.MIN_VALUE;
 
     /**
@@ -82,7 +86,7 @@ public class Player implements Runnable {
         this.table = table;
         this.id = id;
         this.human = human;
-        this.incomingActions = new ArrayBlockingQueue<>(3);
+        this.incomingActions = new ArrayBlockingQueue<>(MAX_WAITING_ACTIONS);
     }
 
     /**
@@ -101,21 +105,19 @@ public class Player implements Runnable {
                     int slot = incomingActions.take();
                     if (!dealer.isReshuffling()) {
                         env.logger.log(Level.INFO, "Processing key for player on slot: " + slot);
-                        synchronized (table) {
-                            if (table.updatePlayerToken(id, slot) == 3) {
-                                requestSetCheck();
-                            }
+                        if (table.updatePlayerToken(id, slot) && table.getTokenCounter(id) == table.MAX_PLAYER_TOKENS) {
+                            requestSetCheck();
                         }
                     } else {
-                        env.logger.log(Level.WARNING, "Players " + id + " pressed a key while dealer is reshuffling");
+                        env.logger.log(Level.OFF, "Players " + id + " pressed a key while dealer is reshuffling");
                     }
                 } else {
-                    env.ui.setFreeze(id, freezeTime - System.currentTimeMillis());
-                    Thread.sleep(100);
+                    env.ui.setFreeze(id, freezeTime - System.currentTimeMillis() > 0 ? freezeTime - System.currentTimeMillis() + 999 : 1000);
                     incomingActions.clear();
+                    Thread.sleep(SLEEP_TIME_MS);
                 }
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                env.logger.log(Level.WARNING, "Player " + id + " thread was interrupted");
             }
         }
         if (!human) try { aiThread.join(); } catch (InterruptedException ignored) {}
@@ -131,11 +133,10 @@ public class Player implements Runnable {
         aiThread = new Thread(() -> {
             env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " starting.");
             while (!terminate) {
-                // TODO implement player key press simulator
                 try {
                     incomingActions.put(ThreadLocalRandom.current().nextInt(0, 12));
                 } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
+                    env.logger.log(Level.WARNING, "AI thread of player " + id + " was interrupted");
                 }
             }
             env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " terminated.");
@@ -147,7 +148,13 @@ public class Player implements Runnable {
      * Called when the game should be terminated due to an external event.
      */
     public void terminate() {
-        // TODO implement
+        terminate = true;
+        if (!human) {
+            aiThread.interrupt();
+        }
+        playerThread.interrupt();
+        // There is a race condition with interrupting the player, the player might reach the join ai try catch before the interrupt
+        // For now we have to interrupt because the thread might be blocking on incomingActions.take()
     }
 
     /**
@@ -156,7 +163,6 @@ public class Player implements Runnable {
      * @param slot - the slot corresponding to the key pressed.
      */
     public void keyPressed(int slot) {
-        // TODO implement
         if (!incomingActions.offer(slot)) {
             env.logger.log(Level.WARNING, "Failed to add key press to queue");
         }
@@ -164,13 +170,15 @@ public class Player implements Runnable {
 
     public void requestSetCheck() {
         try {
-            dealer.setChecks.put(id);
-            dealer.dealerThread.interrupt();
-            while(dealer.setChecks.contains(id)) {
-                table.wait();
+            synchronized (this) {
+                dealer.setChecks.put(id);
+                dealer.dealerThread.interrupt();
+                while (dealer.setChecks.contains(id)) {
+                    wait();
+                }
             }
         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+            env.logger.log(Level.WARNING, "Player " + id + " thread was interrupted while waiting for set check");
         }
     }
 
@@ -181,9 +189,6 @@ public class Player implements Runnable {
      * @post - the player's score is updated in the ui.
      */
     public void point() {
-        // TODO implement
-
-        int ignored = table.countCards(); // this part is just for demonstration in the unit tests
         env.ui.setScore(id, ++score);
         setFreezeTime(System.currentTimeMillis() + env.config.pointFreezeMillis);
     }
@@ -195,11 +200,11 @@ public class Player implements Runnable {
         setFreezeTime(System.currentTimeMillis() + env.config.penaltyFreezeMillis);
     }
 
-    private void setFreezeTime(long time) {
+    private synchronized void setFreezeTime(long time) {
         freezeTime = time;
     }
 
-    public boolean isFrozen() {
+    public synchronized boolean isFrozen() {
         return freezeTime > System.currentTimeMillis();
     }
 
