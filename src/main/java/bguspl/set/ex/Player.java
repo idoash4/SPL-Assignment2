@@ -148,12 +148,16 @@ public class Player implements Runnable {
      * Called when the game should be terminated due to an external event.
      */
     public void terminate() {
+        env.logger.log(Level.INFO, "Terminate was called in player " + id +" class");
         terminate = true;
         if (!human) {
+            env.logger.log(Level.INFO, "Interrupting player " + id +" ai thread");
             aiThread.interrupt();
             try { aiThread.join(); } catch (InterruptedException ignored) {}
         }
+        env.logger.log(Level.INFO, "Interrupting player " + id +" thread");
         playerThread.interrupt();
+        env.logger.log(Level.INFO, "Finished running terminate method in player " + id +" class");
     }
 
     /**

@@ -92,7 +92,7 @@ public class Dealer implements Runnable {
      *
      */
     private void createAndRunPlayerThreads() {
-        for (Player player:players) {
+        for (Player player : players) {
             Thread playerThread = new Thread(player, "player "+player.id);
             playerThread.start();
         }
@@ -102,19 +102,19 @@ public class Dealer implements Runnable {
      * The inner loop of the dealer thread that runs as long as the countdown did not time out.
      */
     private void timerLoop() {
+        boolean cardsRemoved = true;
         while (!terminate && (env.config.turnTimeoutMillis <= 0 || System.currentTimeMillis() < reshuffleTime)) {
-            sleepUntilWokenOrTimeout();
-            updateTimerDisplay(false);
-            boolean cardsRemoved = removeCardsFromTable();
-            placeCardsOnTable();
             // if cards were removed make sure there are still sets available in the game/on the table
             if (cardsRemoved && (
                     (env.config.turnTimeoutMillis > 0 && env.util.findSets(Stream.concat(deck.stream(),
                             tableCards.stream()).collect(Collectors.toList()), 1).size() == 0)
-                    || (env.config.turnTimeoutMillis <=0 && env.util.findSets(tableCards, 1).size() == 0))) {
+                            || (env.config.turnTimeoutMillis <=0 && env.util.findSets(tableCards, 1).size() == 0))) {
                 break;
-
             }
+            sleepUntilWokenOrTimeout();
+            updateTimerDisplay(false);
+            cardsRemoved = removeCardsFromTable();
+            placeCardsOnTable();
         }
     }
 
@@ -127,11 +127,13 @@ public class Dealer implements Runnable {
 
     private void terminatePlayers() {
         for (Player player : players) {
+            env.logger.log(Level.INFO, "Dealer calling terminate on player " + player.id);
             player.terminate();
             try {
+                env.logger.log(Level.INFO, "Dealer waiting for player " + player.id + " thread to terminate");
                 player.playerThread.join();
             } catch (InterruptedException exception) {
-                env.logger.log(Level.WARNING, "Dealer thread was interrupted while waiting for player " +player.id + " threads to finish");
+                env.logger.log(Level.WARNING, "Dealer thread was interrupted while waiting for player " +player.id + " threads to terminate");
             }
         }
     }
@@ -203,6 +205,7 @@ public class Dealer implements Runnable {
             }
             updateTimerDisplay(true);
             if (env.config.hints) {
+                System.out.println("Dealer reshuffled");
                 table.hints();
             }
         }
