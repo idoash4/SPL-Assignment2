@@ -120,7 +120,6 @@ public class Player implements Runnable {
                 env.logger.log(Level.WARNING, "Player " + id + " thread was interrupted");
             }
         }
-        if (!human) try { aiThread.join(); } catch (InterruptedException ignored) {}
         env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " terminated.");
     }
 
@@ -151,10 +150,9 @@ public class Player implements Runnable {
         terminate = true;
         if (!human) {
             aiThread.interrupt();
+            try { aiThread.join(); } catch (InterruptedException ignored) {}
         }
         playerThread.interrupt();
-        // There is a race condition with interrupting the player, the player might reach the join ai try catch before the interrupt
-        // For now we have to interrupt because the thread might be blocking on incomingActions.take()
     }
 
     /**
