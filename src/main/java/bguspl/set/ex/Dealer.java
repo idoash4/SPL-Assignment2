@@ -84,11 +84,6 @@ public class Dealer implements Runnable {
         }
         announceWinners();
         terminatePlayers();
-        for (Player player : players) {
-            try {
-                player.playerThread.join();
-            } catch (InterruptedException ignored) {}
-        }
         env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " terminated.");
     }
 
@@ -121,16 +116,16 @@ public class Dealer implements Runnable {
      */
     public void terminate() {
         terminate = true;
-        //dealerThread.interrupt();
     }
 
     private void terminatePlayers() {
         for (Player player : players) {
             player.terminate();
-//            synchronized (player) {
-//                setChecks.clear();
-//                player.notifyAll();
-//            }
+            try {
+                player.playerThread.join();
+            } catch (InterruptedException exception) {
+                env.logger.log(Level.WARNING, "Dealer thread was interrupted while waiting for player threads to finish");
+            }
         }
     }
 

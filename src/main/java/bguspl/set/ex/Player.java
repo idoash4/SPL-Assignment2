@@ -120,6 +120,7 @@ public class Player implements Runnable {
                 env.logger.log(Level.WARNING, "Player " + id + " thread was interrupted");
             }
         }
+        try { aiThread.join(); } catch (InterruptedException ignored) {}
         env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " terminated.");
     }
 
