@@ -10,6 +10,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 /**
  * This class manages the dealer's threads and data
@@ -101,13 +102,19 @@ public class Dealer implements Runnable {
      * The inner loop of the dealer thread that runs as long as the countdown did not time out.
      */
     private void timerLoop() {
-        while (!terminate &&
-                ((env.config.turnTimeoutMillis > 0 && System.currentTimeMillis() < reshuffleTime) ||
-                        (env.config.turnTimeoutMillis <=0 && env.util.findSets(tableCards, 1).size() > 0))) {
+        while (!terminate && (env.config.turnTimeoutMillis <= 0 || System.currentTimeMillis() < reshuffleTime)) {
             sleepUntilWokenOrTimeout();
             updateTimerDisplay(false);
-            removeCardsFromTable();
+            boolean cardsRemoved = removeCardsFromTable();
             placeCardsOnTable();
+            // if cards were removed make sure there are still sets available in the game/on the table
+            if (cardsRemoved && (
+                    (env.config.turnTimeoutMillis > 0 && env.util.findSets(Stream.concat(deck.stream(),
+                            tableCards.stream()).collect(Collectors.toList()), 1).size() == 0)
+                    || (env.config.turnTimeoutMillis <=0 && env.util.findSets(tableCards, 1).size() == 0))) {
+                break;
+
+            }
         }
     }
 
@@ -124,7 +131,7 @@ public class Dealer implements Runnable {
             try {
                 player.playerThread.join();
             } catch (InterruptedException exception) {
-                env.logger.log(Level.WARNING, "Dealer thread was interrupted while waiting for player threads to finish");
+                env.logger.log(Level.WARNING, "Dealer thread was interrupted while waiting for player " +player.id + " threads to finish");
             }
         }
     }
@@ -141,8 +148,9 @@ public class Dealer implements Runnable {
     /**
      * Checks cards should be removed from the table and removes them.
      */
-    private void removeCardsFromTable() {
+    private boolean removeCardsFromTable() {
         Integer playerId = setChecks.peek();
+        boolean cardsRemoved = false;
         if (playerId != null) {
             env.logger.log(Level.INFO, "Waiting for player lock to check for set of player " +playerId);
             synchronized (players[playerId]) {
@@ -154,6 +162,7 @@ public class Dealer implements Runnable {
                         for (Integer card : cards) {
                             table.removeCardById(card);
                             tableCards.remove(card);
+                            cardsRemoved = true;
                         }
                         players[playerId].point();
                     } else {
@@ -168,6 +177,7 @@ public class Dealer implements Runnable {
                 players[playerId].notifyAll();
             }
         }
+        return cardsRemoved;
     }
 
     /**
