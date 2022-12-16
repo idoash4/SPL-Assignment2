@@ -104,7 +104,7 @@ public class Player implements Runnable {
                     env.ui.setFreeze(id, 0);
                     int slot = incomingActions.take();
                     if (!dealer.isReshuffling()) {
-                        env.logger.log(Level.INFO, "Processing key for player on slot: " + slot);
+                        env.logger.log(Level.INFO, "Processing key for player " + id + " on slot: " + slot);
                         if (table.updatePlayerToken(id, slot) && table.getTokenCounter(id) == table.MAX_PLAYER_TOKENS) {
                             requestSetCheck();
                         }
@@ -171,11 +171,15 @@ public class Player implements Runnable {
     public void requestSetCheck() {
         try {
             synchronized (this) {
+                env.logger.log(Level.INFO, "Player " + id + " waiting to add himself to set check queue");
                 dealer.setChecks.put(id);
+                env.logger.log(Level.INFO, "Player " + id + " added himself to set check queue");
                 dealer.dealerThread.interrupt();
                 while (dealer.setChecks.contains(id)) {
+                    env.logger.log(Level.INFO, "Player " + id + " waiting for set check");
                     wait();
                 }
+                env.logger.log(Level.INFO, "Player " + id + " finished waiting for set check");
             }
         } catch (InterruptedException e) {
             env.logger.log(Level.WARNING, "Player " + id + " thread was interrupted while waiting for set check");
