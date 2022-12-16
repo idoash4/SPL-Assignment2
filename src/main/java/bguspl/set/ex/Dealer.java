@@ -147,7 +147,7 @@ public class Dealer implements Runnable {
      * Checks cards should be removed from the table and removes them.
      */
     private void removeCardsFromTable() {
-        Integer playerId = setChecks.poll();
+        Integer playerId = setChecks.peek();
         if (playerId != null) {
             env.logger.log(Level.INFO, "Waiting for player lock to check for set of player " +playerId);
             synchronized (players[playerId]) {
@@ -168,6 +168,8 @@ public class Dealer implements Runnable {
                 } else {
                     env.logger.log(Level.WARNING, "Player " + playerId + " asked for a set check while not having 3 cards");
                 }
+                env.logger.log(Level.INFO, "Clearing set checks queue and notifying player " + playerId);
+                setChecks.clear();
                 players[playerId].notifyAll();
             }
         }
