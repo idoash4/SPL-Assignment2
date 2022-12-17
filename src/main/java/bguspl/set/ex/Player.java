@@ -71,6 +71,7 @@ public class Player implements Runnable {
 
     private long freezeTime = Long.MIN_VALUE;
 
+    private int setCounter = 0;
     /**
      * The class constructor.
      *
@@ -100,27 +101,23 @@ public class Player implements Runnable {
 
         while (!terminate) {
             try {
-                if (!isFrozen()) {
-                    env.ui.setFreeze(id, 0);
-                    int slot = incomingActions.take();
-                    if (!dealer.isReshuffling()) {
-                        env.logger.log(Level.INFO, "Processing key for player " + id + " on slot: " + slot);
-                        if (table.updatePlayerToken(id, slot) && table.getTokenCounter(id) == table.MAX_PLAYER_TOKENS) {
-                            requestSetCheck();
-                        }
-                    } else {
-                        env.logger.log(Level.OFF, "Players " + id + " pressed a key while dealer is reshuffling");
+                if (isFrozen())
+                    updateFreezeTime();
+                int slot = incomingActions.take();
+                if (!dealer.isReshuffling()) {
+                    env.logger.log(Level.INFO, "Processing key for player " + id + " on slot: " + slot);
+                    if (table.updatePlayerToken(id, slot) && table.getTokenCounter(id) == table.MAX_PLAYER_TOKENS) {
+                        requestSetCheck();
                     }
                 } else {
-                    env.ui.setFreeze(id, freezeTime - System.currentTimeMillis() > 0 ? freezeTime - System.currentTimeMillis() + 999 : 1000);
-                    incomingActions.clear();
-                    Thread.sleep(SLEEP_TIME_MS);
+                    env.logger.log(Level.OFF, "Players " + id + " pressed a key while dealer is reshuffling");
                 }
             } catch (InterruptedException e) {
                 env.logger.log(Level.WARNING, "Player " + id + " thread was interrupted");
             }
         }
         try { aiThread.join(); } catch (InterruptedException ignored) {}
+        System.out.println("Player " + id + " set counter is: " + setCounter);
         env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " terminated.");
     }
 
@@ -178,6 +175,7 @@ public class Player implements Runnable {
                 dealer.setChecks.put(id);
                 env.logger.log(Level.INFO, "Player " + id + " added himself to set check queue");
                 dealer.dealerThread.interrupt();
+                setCounter++;
                 while (dealer.setChecks.contains(id)) {
                     env.logger.log(Level.INFO, "Player " + id + " waiting for set check");
                     wait();
@@ -189,6 +187,20 @@ public class Player implements Runnable {
         }
     }
 
+    public void updateFreezeTime() {
+        try {
+            while (isFrozen()) {
+                // We want freeze time counter to only show numbers larger than zero,
+                // so we add 999 milliseconds to display time
+                env.ui.setFreeze(id, freezeTime - System.currentTimeMillis() > 0 ? freezeTime - System.currentTimeMillis() + 999 : 1000);
+                Thread.sleep(SLEEP_TIME_MS);
+            }
+            env.ui.setFreeze(id, 0);
+            incomingActions.clear();
+        } catch (InterruptedException e) {
+            env.logger.log(Level.WARNING, "Player " + id + " thread was interrupted while frozen");
+        }
+    }
     /**
      * Award a point to a player and perform other related actions.
      *
