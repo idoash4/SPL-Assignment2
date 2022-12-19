@@ -168,7 +168,7 @@ public class Player implements Runnable {
         }
     }
 
-    public void requestSetCheck() {
+    private void requestSetCheck() {
         try {
             synchronized (this) {
                 env.logger.log(Level.INFO, "Player " + id + " waiting to add himself to set check queue");
@@ -227,7 +227,11 @@ public class Player implements Runnable {
         return freezeTime > System.currentTimeMillis();
     }
 
-    public int getScore() {
+    public int score() {
         return score;
+    }
+
+    public int getId() {
+        return id;
     }
 }

@@ -93,7 +93,7 @@ public class Dealer implements Runnable {
      */
     private void createAndRunPlayerThreads() {
         for (Player player : players) {
-            Thread playerThread = new Thread(player, "player "+player.id);
+            Thread playerThread = new Thread(player, "player " + player.getId());
             playerThread.start();
         }
     }
@@ -127,13 +127,13 @@ public class Dealer implements Runnable {
 
     private void terminatePlayers() {
         for (Player player : players) {
-            env.logger.log(Level.INFO, "Dealer calling terminate on player " + player.id);
+            env.logger.log(Level.INFO, "Dealer calling terminate on player " + player.getId());
             player.terminate();
             try {
-                env.logger.log(Level.INFO, "Dealer waiting for player " + player.id + " thread to terminate");
+                env.logger.log(Level.INFO, "Dealer waiting for player " + player.getId() + " thread to terminate");
                 player.playerThread.join();
             } catch (InterruptedException exception) {
-                env.logger.log(Level.WARNING, "Dealer thread was interrupted while waiting for player " +player.id + " threads to terminate");
+                env.logger.log(Level.WARNING, "Dealer thread was interrupted while waiting for player " +player.getId() + " threads to terminate");
             }
         }
     }
@@ -143,7 +143,7 @@ public class Dealer implements Runnable {
      *
      * @return true iff the game should be finished.
      */
-    private boolean shouldFinish() {
+    protected boolean shouldFinish() {
         return terminate || env.util.findSets(deck, 1).size() == 0;
     }
 
@@ -188,7 +188,6 @@ public class Dealer implements Runnable {
     private void placeCardsOnTable() {
         if (deck.size() == 0)
             return; // deck is empty no cards to place
-
         int empty_slots = table.countEmptySlots();
         if (empty_slots > 0) {
             Collections.shuffle(deck);
@@ -253,17 +252,17 @@ public class Dealer implements Runnable {
     /**
      * Check who is/are the winner/s and displays them.
      */
-    private void announceWinners() {
+    protected void announceWinners() {
         List<Integer> winners = new ArrayList<Integer>(env.config.players);
         int maxScore = 0;
         for (Player player : players) {
-            int playerScore = player.getScore();
+            int playerScore = player.score();
             if (playerScore > maxScore) {
                 maxScore = playerScore;
                 winners.clear();
-                winners.add(player.id);
+                winners.add(player.getId());
             } else if (playerScore == maxScore) {
-                winners.add(player.id);
+                winners.add(player.getId());
             }
         }
         env.ui.announceWinner(winners.stream().mapToInt(i -> i).toArray());

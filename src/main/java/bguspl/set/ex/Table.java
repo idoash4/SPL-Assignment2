@@ -50,6 +50,13 @@ public class Table {
         this.tokenPlayerCounter = tokenPlayerCounter;
     }
 
+    public Table(Env env, Integer[] slotToCard, Integer[] cardToSlot) {
+        this(env, slotToCard,
+                cardToSlot,
+                new boolean[env.config.tableSize][env.config.players],
+                new int[env.config.players]);
+    }
+
     /**
      * Constructor for actual usage.
      *

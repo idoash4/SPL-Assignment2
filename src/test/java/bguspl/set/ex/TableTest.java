@@ -7,11 +7,13 @@ import bguspl.set.Util;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.logging.Logger;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 class TableTest {
 
@@ -30,13 +32,15 @@ class TableTest {
         properties.put("TableDelaySeconds", "0");
         properties.put("PlayerKeys1", "81,87,69,82");
         properties.put("PlayerKeys2", "85,73,79,80");
+        properties.put("HumanPlayers", 2);
+        properties.put("ComputerPlayers", 0);
         MockLogger logger = new MockLogger();
         Config config = new Config(logger, properties);
         slotToCard = new Integer[config.tableSize];
         cardToSlot = new Integer[config.deckSize];
 
         Env env = new Env(logger, config, new MockUserInterface(), new MockUtil());
-        //table = new Table(env, slotToCard, cardToSlot);
+        table = new Table(env, slotToCard, cardToSlot);
     }
 
     private int fillSomeSlots() {
@@ -55,11 +59,30 @@ class TableTest {
         }
     }
 
-    private void placeSomeCardsAndAssert() {
+    private void placeSomeCardsAndAssert() throws InterruptedException {
         table.placeCard(8, 2);
 
         assertEquals(8, (int) slotToCard[2]);
         assertEquals(2, (int) cardToSlot[8]);
+    }
+
+    private void removeSomeCardsAndAssert() {
+        table.removeCard(2);
+
+        assertEquals(null, slotToCard[2]);
+        assertEquals(null, cardToSlot[5]);
+    }
+
+    private void removeAllCardsAndAssert() {
+        table.removeAllCards();
+        assertTrue(Arrays.stream(slotToCard).allMatch(Objects::isNull));
+        assertTrue(Arrays.stream(cardToSlot).allMatch(Objects::isNull));
+    }
+
+    private void placeTokenAndAssert() {
+        table.placeToken(0, 1);
+        assertTrue(table.slotToPlayerToken[1][0]);
+        assertEquals(table.getTokenCounter(0), 1);
     }
 
     @Test
@@ -83,19 +106,40 @@ class TableTest {
     }
 
     @Test
-    void placeCard_SomeSlotsAreFilled() {
+    void placeCard_SomeSlotsAreFilled() throws InterruptedException {
 
         fillSomeSlots();
         placeSomeCardsAndAssert();
     }
 
     @Test
-    void placeCard_AllSlotsAreFilled() {
+    void placeCard_AllSlotsAreFilled() throws InterruptedException {
         fillAllSlots();
         placeSomeCardsAndAssert();
     }
 
+    @Test
+    void removeCard_SomeSlotsAreRemoved() {
+        fillSomeSlots();
+        removeSomeCardsAndAssert();
+    }
+
+    @Test
+    void removeCard_AllCardsAreRemoved() {
+        fillAllSlots();
+        removeAllCardsAndAssert();
+    }
+
+    @Test
+    void placeToken() {
+        fillAllSlots();
+        placeTokenAndAssert();
+    }
+
+
     static class MockUserInterface implements UserInterface {
+        @Override
+        public void dispose() {}
         @Override
         public void placeCard(int card, int slot) {}
         @Override
@@ -140,6 +184,9 @@ class TableTest {
         public List<int[]> findSets(List<Integer> deck, int count) {
             return null;
         }
+
+        @Override
+        public void spin() {}
     }
 
     static class MockLogger extends Logger {
@@ -147,4 +194,5 @@ class TableTest {
             super("", null);
         }
     }
+
 }
