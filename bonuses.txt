@@ -36,7 +36,8 @@ dealer will reach the end of the run method and its thread will terminate. The m
 and the program will finish.
 If the x button is pressed before the end of the game the main thread will call terminate() method in dealer which
 will update the volatile bool terminate in dealer to true. We check for this value in the main while loop and in the
-timerLoop and the flow will be the same as explained above.
+timerLoop and the flow will be the same as explained above. The method will also lock and then notify on the dealer
+instance to support the mode in which env.config.turnTimeoutMillis < 0.
 We tested this solution by writing to the log when threads terminate. In the end of the run we checked the log to make
 sure the logs show the threads were terminated in the correct order.
 
@@ -70,5 +71,10 @@ Blocking methods in BlockingQueue implementation are optimized and send the thre
                   player will wait for a notify on its instance until the dealer finished the set check.
                   If the player is frozen the method updateFreezeTime() has to update the freeze timer so the thread
                   cannot be in wait state.
-* Dealer thread - The dealer thread has to update the timer of the game so it can't be in a wait state.
+* Dealer thread - for env.config.turnTimeoutMillis >= 0 The dealer thread has to update the timer of the game so it
+                  can't be in a wait state. for env.config.turnTimeoutMillis < 0 the dealer will wait on its instance
+                  lock in sleepUntilWokenOrTimeout(). It will wake up from an interrupt, which can only be caused
+                  by the player requesting a set check or by a notify on its instance. which can be caused only from
+                  the terminate method in dealer.
+We tested that the threads dont wake up by adding logs in relevant places.
 

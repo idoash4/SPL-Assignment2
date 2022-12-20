@@ -121,8 +121,9 @@ public class Dealer implements Runnable {
     /**
      * Called when the game should be terminated due to an external event.
      */
-    public void terminate() {
+    public synchronized void terminate() {
         terminate = true;
+        this.notify();
     }
 
     private void terminatePlayers() {
@@ -177,7 +178,7 @@ public class Dealer implements Runnable {
                 }
                 env.logger.log(Level.INFO, "Clearing set checks queue and notifying player " + playerId);
                 setChecks.clear();
-                players[playerId].notifyAll();
+                players[playerId].notify();
             }
         }
         return cardsRemoved;
@@ -216,7 +217,14 @@ public class Dealer implements Runnable {
      */
     private void sleepUntilWokenOrTimeout() {
         try {
-            Thread.sleep(SLEEP_TIME_MS);
+            if (env.config.turnTimeoutMillis >= 0) {
+                Thread.sleep(SLEEP_TIME_MS);
+            } else {
+                synchronized (this) {
+                    while (!terminate && setChecks.isEmpty())
+                        wait();
+                }
+            }
         } catch (InterruptedException e) {
             env.logger.log(Level.INFO, "Dealer thread was interrupted");
         }
