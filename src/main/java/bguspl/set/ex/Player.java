@@ -51,9 +51,14 @@ public class Player implements Runnable {
     private final boolean human;
 
     /**
-     * True iff game should be terminated due to an external event.
+     * True iff player should be terminated due to an external event.
      */
     private volatile boolean terminate;
+
+    /**
+     * True iff ai thread should be terminated due to an external event.
+     */
+    private volatile boolean terminateAI;
 
     /**
      * The current score of the player.
@@ -109,14 +114,11 @@ public class Player implements Runnable {
                     if (table.updatePlayerToken(id, slot) && table.getTokenCounter(id) == table.MAX_PLAYER_TOKENS) {
                         requestSetCheck();
                     }
-                } else {
-                    env.logger.log(Level.OFF, "Players " + id + " pressed a key while dealer is reshuffling");
                 }
             } catch (InterruptedException e) {
                 env.logger.log(Level.WARNING, "Player " + id + " thread was interrupted");
             }
         }
-        try { aiThread.join(); } catch (InterruptedException ignored) {}
         System.out.println("Player " + id + " set counter is: " + setCounter);
         env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " terminated.");
     }
@@ -129,7 +131,7 @@ public class Player implements Runnable {
         // note: this is a very very smart AI (!)
         aiThread = new Thread(() -> {
             env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " starting.");
-            while (!terminate) {
+            while (!terminateAI) {
                 try {
                     incomingActions.put(ThreadLocalRandom.current().nextInt(0, 12));
                 } catch (InterruptedException e) {
@@ -146,12 +148,13 @@ public class Player implements Runnable {
      */
     public void terminate() {
         env.logger.log(Level.INFO, "Terminate was called in player " + id +" class");
-        terminate = true;
         if (!human) {
+            terminateAI = true;
             env.logger.log(Level.INFO, "Interrupting player " + id +" ai thread");
             aiThread.interrupt();
             try { aiThread.join(); } catch (InterruptedException ignored) {}
         }
+        terminate = true;
         env.logger.log(Level.INFO, "Interrupting player " + id +" thread");
         playerThread.interrupt();
         env.logger.log(Level.INFO, "Finished running terminate method in player " + id +" class");

@@ -1,0 +1,74 @@
+BONUS CHALLENGE FORM
+--------------------
+
+For each bonus challenge you have implemented, please replace the sentence "We are not entitled to this bonus."
+with a short description of:
+
+1. How it was implemented in your code
+2. Where it was used (in which class methods).
+3. How you tested that it is working correctly.
+
+--------------------
+
+1. Fully supporting all configuration fields and avoiding the use of magic numbers
+
+We support all configuration fields. We also use static final variables for const values which cannot be found
+in the configuration (like SLEEP_TIME_MS in dealer). We tested all the configuration values by manually running the game
+with all the different combinations.
+
+--------------------
+
+2. Terminating all threads (that you created) gracefully and in reverse order to the order they were created in.
+
+We support this bonus as well. We will start by explaining Termination when there are no more sets available:
+shouldFinish() will return true and the while loop in dealer run will exit. After announcing the winners the dealer will
+call the method terminatePlayers(). This method job is to ensure all the players thread finish before resuming execution
+of the dealer thread. It cycles over all the players in reverse order calling their terminate method() and waiting with
+join() for their threads to terminate. The terminate() method in Player class changes the volatile boolean terminateAI
+of non-human player to true. Afterwards it interrupts the AI thread and wait for it to join. Only after the termination
+of the AI thread the main thread (while running terminate() in player class) interrupts the player thread.
+We have to interrupt the player thread to release possible blocking calls on in player. We have 2 of those: one in the
+run() method on reading key presses from the blocking queue (incomingActions.take()), and another one in request set check,
+waiting for a space in the dealer set check queue (dealer.setChecks.put(id)). Since we first set the terminate bool to
+true and only then interrupt the player thread we ensure that the thread will not enter another blocking section after
+the first interruption. After cycling on all the player in the dealer and waiting for their threads to terminate the
+dealer will reach the end of the run method and its thread will terminate. The main thread will foolow the dealer thrad
+and the program will finish.
+If the x button is pressed before the end of the game the main thread will call terminate() method in dealer which
+will update the volatile bool terminate in dealer to true. We check for this value in the main while loop and in the
+timerLoop and the flow will be the same as explained above.
+We tested this solution by writing to the log when threads terminate. In the end of the run we checked the log to make
+sure the logs show the threads were terminated in the correct order.
+
+--------------------
+
+3. Handling the config.turnTimeoutMillis value as follows:
+config.turnTimeoutMillis < 0: display nothing.
+config.turnTimeoutMillis = 0: display a timer since the last action (reshuffle or set collected).
+Note: in modes without a countdown timer the dealer must ensure there is always at least one legal set on the table.
+
+We support all modes of turnTimeoutMillis.
+The code dealing with the different TurnTimeoutSeconds can be found in the Dealer class in methods updateTimerDisplay()
+and in the condition for the while loop in timerLoop(). if TurnTimeoutSeconds<=0 we exit timerLoop() when there are no
+sets on the table. We are doing it by maintaining a list of the cards on the table in the dealer class (tableCards)
+and checking if there are sets available in it after removing cards from the table.
+In addition, if TurnTimeoutSeconds=0 we call env.ui.setElapsed() instead of env.ui.setCountdown().
+We tested each of the modes by running the game with different combinations of other configuration values.
+
+--------------------
+
+4. Making sure that the threads do not wake up unless some actual job needs to be done (e.g., a value needs to be
+changed on the display, key input needs to be handled, etc.) and the only threads created by you are:
+1 thread per player + 1 additional thread for non-human players.
+
+Our threads do not wake up until unless some actual job needs to be done.
+Blocking methods in BlockingQueue implementation are optimized and send the thread to wait until its request can be executed.
+* AI thread - The thread will block on incomingActions.put() until there is space in the queue for another random press.
+* Player thread - If the player isn't frozen it will block on incomingActions.take() until there is a key press to process.
+                  If the player requested a set check it will block on dealer.setChecks.put(id) if the dealer is checking a
+                  set for another player. If the dealer is available for a set check (dealer.setChecks is empty) the
+                  player will wait for a notify on its instance until the dealer finished the set check.
+                  If the player is frozen the method updateFreezeTime() has to update the freeze timer so the thread
+                  cannot be in wait state.
+* Dealer thread - The dealer thread has to update the timer of the game so it can't be in a wait state.
+

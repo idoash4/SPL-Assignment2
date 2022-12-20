@@ -126,7 +126,8 @@ public class Dealer implements Runnable {
     }
 
     private void terminatePlayers() {
-        for (Player player : players) {
+        for (int i = players.length - 1; i >= 0 ; i--) {
+            Player player = players[i];
             env.logger.log(Level.INFO, "Dealer calling terminate on player " + player.getId());
             player.terminate();
             try {
