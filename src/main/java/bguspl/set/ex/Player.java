@@ -119,7 +119,7 @@ public class Player implements Runnable {
                 env.logger.log(Level.WARNING, "Player " + id + " thread was interrupted");
             }
         }
-        System.out.println("Player " + id + " set counter is: " + setCounter);
+        env.logger.log(Level.INFO, "Player Id " + id + " set counter is: " + setCounter);
         env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " terminated.");
     }
 
