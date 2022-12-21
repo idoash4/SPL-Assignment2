@@ -48,8 +48,6 @@ public class DealerTest {
         Player[] players = new Player[2];
         players[0] = player1;
         players[1] = player2;
-        when(player1.getId()).thenReturn(0);
-        when(player2.getId()).thenReturn(1);
         dealer = new Dealer(env, table, players);
     }
 
@@ -69,10 +67,16 @@ public class DealerTest {
 
     @Test
     void announceWinner() {
+        //override ID returned by mock objects
+        when(player1.getId()).thenReturn(0);
+        when(player2.getId()).thenReturn(1);
+        // override score returned by mock objects
         when(player1.score()).thenReturn(1);
         when(player2.score()).thenReturn(2);
+        // call the method we are testing
         dealer.announceWinners();
         int[] shouldWin = new int[1];
+        // check player 2 won
         shouldWin[0] = 1;
         verify(ui).announceWinner(eq(shouldWin));
     }
