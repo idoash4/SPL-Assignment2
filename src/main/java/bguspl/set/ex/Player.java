@@ -70,8 +70,6 @@ public class Player implements Runnable {
      */
     private final BlockingQueue<Integer> incomingActions;
 
-    private static final int MAX_WAITING_ACTIONS = 3;
-
     private static final int SLEEP_TIME_MS = 100;
 
     private long freezeTime = Long.MIN_VALUE;
@@ -92,7 +90,7 @@ public class Player implements Runnable {
         this.table = table;
         this.id = id;
         this.human = human;
-        this.incomingActions = new ArrayBlockingQueue<>(MAX_WAITING_ACTIONS);
+        this.incomingActions = new ArrayBlockingQueue<>(env.config.featureSize);
     }
 
     /**
@@ -133,7 +131,7 @@ public class Player implements Runnable {
             env.logger.log(Level.INFO, "Thread " + Thread.currentThread().getName() + " starting.");
             while (!terminateAI) {
                 try {
-                    incomingActions.put(ThreadLocalRandom.current().nextInt(0, 12));
+                    incomingActions.put(ThreadLocalRandom.current().nextInt(0, env.config.tableSize));
                 } catch (InterruptedException e) {
                     env.logger.log(Level.WARNING, "AI thread of player " + id + " was interrupted");
                 }
