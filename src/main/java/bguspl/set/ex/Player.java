@@ -70,7 +70,9 @@ public class Player implements Runnable {
      */
     private final BlockingQueue<Integer> incomingActions;
 
-    private static final int SLEEP_TIME_MS = 100;
+    private final long MAX_SLEEP_TIME_MS = 100;
+
+    private final long updateFreezeTimeInterval;
 
     private long freezeTime = Long.MIN_VALUE;
 
@@ -91,6 +93,7 @@ public class Player implements Runnable {
         this.id = id;
         this.human = human;
         this.incomingActions = new ArrayBlockingQueue<>(env.config.featureSize);
+        this.updateFreezeTimeInterval = Math.min(MAX_SLEEP_TIME_MS, Math.min(env.config.penaltyFreezeMillis, env.config.pointFreezeMillis));
     }
 
     /**
@@ -194,7 +197,7 @@ public class Player implements Runnable {
                 // We want freeze time counter to only show numbers larger than zero,
                 // so we add 999 milliseconds to display time
                 env.ui.setFreeze(id, freezeTime - System.currentTimeMillis() > 0 ? freezeTime - System.currentTimeMillis() + 999 : 1000);
-                Thread.sleep(SLEEP_TIME_MS);
+                Thread.sleep(updateFreezeTimeInterval);
             }
             env.ui.setFreeze(id, 0);
             incomingActions.clear();

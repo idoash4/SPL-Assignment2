@@ -217,7 +217,7 @@ public class Dealer implements Runnable {
      */
     private void sleepUntilWokenOrTimeout() {
         try {
-            if (env.config.turnTimeoutMillis >= 0) {
+            if (env.config.turnTimeoutMillis >= 0 && setChecks.isEmpty()) {
                 Thread.sleep(SLEEP_TIME_MS);
             } else {
                 synchronized (this) {
